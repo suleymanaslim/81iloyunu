@@ -130,6 +130,7 @@ async function init(){
  loadMistakes();
  try{
   const response=await fetch('map.svg');if(!response.ok)throw new Error('map load');const parsed=new DOMParser().parseFromString(await response.text(),'image/svg+xml');if(parsed.querySelector('parsererror'))throw new Error('map XML');const svg=document.importNode(parsed.documentElement,true);
+  svg.querySelector('#kibris')?.remove();
   svg.setAttribute('viewBox','0 0 1007.478 430');svg.removeAttribute('id');svg.setAttribute('aria-label','Türkiye illeri ve plaka numaraları');$('map-mount').append(svg);groups=[...svg.querySelectorAll('g[data-plakakodu]')];
   const unique=new Map();groups.forEach(g=>unique.set(g.dataset.plakakodu,{code:g.dataset.plakakodu,name:g.dataset.iladi,region:regions[g.dataset.plakakodu]}));cities=[...unique.values()].sort((a,b)=>a.code.localeCompare(b.code));if(cities.length!==81||cities.some(c=>!c.region))throw new Error('Incomplete map');
   groups.forEach(g=>{g.setAttribute('role','button');g.setAttribute('tabindex','0');g.setAttribute('aria-label',`${g.dataset.iladi}, plaka ${g.dataset.plakakodu}`);g.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();selectProvince(g.dataset.plakakodu);}});});createPlates(svg);
