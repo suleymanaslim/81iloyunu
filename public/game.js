@@ -15,7 +15,7 @@ let cities = [], groups = [], mistakes = {}, storageOK = true;
 let mode = 'quiz', queue = [], index = 0, active = false, solved = false, errors = 0, hintStep = 0, correctFirst = 0, answered = 0;
 let soundOn = true, audioContext, scale = 1, panX = 0, panY = 0;
 const pointers = new Map(); let gesture = null;
-const rejected = new Set(); let advanceTimer = null;
+const rejected = new Set(); const known = new Set(); let advanceTimer = null;
 function cancelAdvance(){clearTimeout(advanceTimer);advanceTimer=null;}
 function scheduleAdvance(delay=700){cancelAdvance();advanceTimer=setTimeout(()=>{advanceTimer=null;nextQuestion();},delay);}
 function loadMistakes(){
@@ -44,7 +44,7 @@ function sound(kind){
  }catch{}
 }
 function feedback(text,kind=''){ $('feedback').textContent=text;$('feedback').className='feedback'+(kind?' '+kind:''); }
-function clearMap(){rejected.clear();groups.forEach(g=>{g.classList.remove('correct','wrong','dim','revealed');g.setAttribute('aria-disabled','false');g.setAttribute('tabindex','0');});}
+function clearMap(){rejected.clear();groups.forEach(g=>{g.classList.remove('correct','wrong','dim','revealed');if(mode!=='learn'&&known.has(g.dataset.plakakodu))g.classList.add('correct');g.setAttribute('aria-disabled','false');g.setAttribute('tabindex','0');});}
 function paint(code,kind){groups.filter(g=>g.dataset.plakakodu===code).forEach(g=>{g.classList.add(kind);if(kind==='wrong'){g.setAttribute('aria-disabled','true');g.setAttribute('tabindex','-1');}});}
 function recordError(){const c=current();if(!c)return;const v=mistakes[c.code]||{count:0,pending:true,reviewed:0};v.count++;v.pending=true;mistakes[c.code]=v;saveMistakes();}
 function renderMistakes(){
@@ -60,7 +60,7 @@ function renderMistakes(){
  $('storage-note').textContent=storageOK?'Bu liste bu cihazın tarayıcısında saklanır. Tarayıcı verileri silinirse liste de silinir.':'Tarayıcı kaydına erişilemiyor. Hatalar şu an yalnızca bu açık sayfada tutuluyor.';
 }
 function setMode(newMode){
- cancelAdvance();mode=newMode;active=false;solved=false;clearMap();resetZoom();
+ cancelAdvance();known.clear();mode=newMode;active=false;solved=false;clearMap();resetZoom();
  document.querySelectorAll('[data-mode]').forEach(b=>{const on=b.dataset.mode===mode;b.classList.toggle('active',on);b.setAttribute('aria-pressed',String(on));});
  $('start').hidden=false;$('hint').disabled=true;
  if(mode==='learn'){
@@ -86,14 +86,14 @@ function selectProvince(code){
  if(mode==='learn'){clearMap();paint(code,'correct');$('target').textContent=chosen.name;$('instruction').textContent=`${code} plaka · ${chosen.region} Bölgesi`;feedback('Başka bir ile dokunarak devam edebilirsin.');sound('tap');return;}
  if(!active||solved||rejected.has(code))return;const target=current();
  if(code!==target.code){rejected.add(code);errors++;recordError();paint(code,'wrong');feedback(`Burası ${chosen.name} (${code}). ${target.name} için başka bir il seç.`,'error');sound('wrong');return;}
- solved=true;answered++;if(!errors&&!hintStep)correctFirst++;paint(code,'correct');$('hint').disabled=true;
+ solved=true;answered++;if(!errors&&!hintStep)correctFirst++;known.add(code);paint(code,'correct');$('hint').disabled=true;
  let tail='';if(mode==='review'&&!errors&&!hintStep&&mistakes[code]){mistakes[code].pending=false;mistakes[code].reviewed++;saveMistakes();tail=' Tekrar tamamlandı.';}else if(mode==='review'){tail=' İpucusuz, hatasız bulmak için tekrar listesinde kalıyor.';}
  feedback(`Doğru! ${target.name} · ${code} plaka.${tail}`,'success');$('accuracy').textContent=`İlk denemede: ${correctFirst} doğru`;sound('correct');scheduleAdvance();
 }
 function showHint(){
  if(!active||solved)return;const c=current();hintStep++;sound('tap');
  if(hintStep===1){$('hint-text').textContent=`${c.region} Bölgesi’nde. Bu bölgeyi düşün.`;$('hint').textContent='Bölgeyi göster';}
- else if(hintStep===2){groups.forEach(g=>g.classList.toggle('dim',regions[g.dataset.plakakodu]!==c.region));$('hint-text').textContent='Bölgedeki iller belirgin kaldı. Şimdi aramayı daralt.';$('hint').textContent='Cevabı göster';}
+ else if(hintStep===2){groups.forEach(g=>g.classList.toggle('dim',regions[g.dataset.plakakodu]!==c.region&&!known.has(g.dataset.plakakodu)));$('hint-text').textContent='Bölgedeki iller belirgin kaldı. Şimdi aramayı daralt.';$('hint').textContent='Cevabı göster';}
  else{recordError();errors++;groups.forEach(g=>g.classList.remove('dim'));paint(c.code,'revealed');solved=true;answered++;$('hint').disabled=true;$('hint-text').textContent=`${c.name}, sarı renkle gösterilen il. Plakası ${c.code}.`;feedback('Bu il tekrar listene eklendi. Yerini incele; birazdan sonraki soru gelecek.');scheduleAdvance(2400);}
 }
 function nextQuestion(){

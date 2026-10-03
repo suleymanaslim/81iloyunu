@@ -3,7 +3,7 @@
 Android ve iPhone tarayıcılarında açılan, kurulum gerektirmeyen Türkiye haritası oyunu.
 
 - 81 ilin doğru sınırları ve plaka numaraları; İstanbul'un iki yakası tek il olarak değerlendirilir.
-- **İli bul:** Sorulan ili haritada seç. Doğru cevaptan 700 ms sonra sonraki soru otomatik gelir. Yanlış seçilen iller o soru boyunca kırmızı kalır ve yeniden seçilemez; yeni soruda açılır. Bulunamayan hedef il tekrar listesine kaydedilir.
+- **İli bul:** Sorulan ili haritada seç. Doğru cevaptan 700 ms sonra sonraki soru otomatik gelir. Doğru bulunan iller tur boyunca ve tur sonunda yeşil kalır; yeni turda yeşil işaretler sıfırlanır. Yanlış seçilen iller o soru boyunca kırmızı kalır ve yeniden seçilemez; yeni soruda açılır. Bulunamayan hedef il tekrar listesine kaydedilir.
 - **Haritayı öğren:** Bir ile dokunup adını, plakasını ve bölgesini öğren.
 - **İpuçları:** Bölge bilgisi, bölgedeki illeri belirginleştirme, cevabı gösterme.
 - **Hataları tekrar et:** Tüm bekleyen illeri veya listeden tek bir ili tekrar çalış. İpucusuz ve hatasız bulduğun il tamamlanır; hata geçmişi görünür kalır.
