@@ -1,6 +1,6 @@
 'use strict';
-const CACHE='81il-shell-v5:'+self.registration.scope;
-const FILES=['./','index.html','style.css','game.js','install.js','map.svg','manifest.webmanifest','icons/icon-192.png','icons/icon-512.png','icons/icon-maskable.png','icons/apple-touch-icon.png'];
+const CACHE='81il-shell-v6:'+self.registration.scope;
+const FILES=['./','index.html','style.css','game.js','install.js','app.js','map.svg','manifest.webmanifest','icons/icon-192.png','icons/icon-512.png','icons/icon-maskable.png','icons/apple-touch-icon.png'];
 const ASSETS=new Set(FILES.map(file=>new URL(file,self.registration.scope).href));
 self.addEventListener('install',event=>{
  // Do not replace the worker while a game is open. New versions activate after closing it.

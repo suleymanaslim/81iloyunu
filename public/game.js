@@ -73,7 +73,7 @@ function setMode(newMode){
 }
 function startSession(newMode=mode,codes){
  if(!cities.length)return;setMode(newMode);if(codes){queue=shuffle(codes);index=0;}
- if(!queue.length)return;active=true;$('start').hidden=true;sound('tap');showQuestion();feedback('Haritada doğru ile dokun.');
+ if(!queue.length)return;window.syncAppScreen?.();active=true;$('start').hidden=true;sound('tap');showQuestion();feedback('Haritada doğru ile dokun.');
 }
 function showQuestion(){
  document.querySelector('.hint-bar').classList.remove('show-landscape-hint');
@@ -143,7 +143,8 @@ async function init(){
   const finish=e=>{pointers.delete(e.pointerId);if(!pointers.size){if(e.type==='pointerup'&&gesture&&!gesture.moved&&gesture.code)selectProvince(gesture.code);gesture=null;}else if(gesture)gesture.moved=true;};view.addEventListener('pointerup',finish);view.addEventListener('pointercancel',finish);
   setMode('quiz');renderMistakes();registerTools();
   const enterLandscape=()=>{if(landscapeOnly.matches&&!active&&!solved&&mode==='quiz'&&queue.length&&answered===0)startSession();};
-  landscapeOnly.addEventListener('change',enterLandscape);enterLandscape();
+  landscapeOnly.addEventListener('change',()=>{if(!document.body.classList.contains('app-ui'))enterLandscape();});
+  if(!document.body.classList.contains('app-ui'))enterLandscape();
  }catch{feedback('Harita yüklenemedi. Bağlantını kontrol edip sayfayı yenile.','error');$('target').textContent='Harita açılamadı';$('instruction').textContent='Sayfayı yenileyerek tekrar dene.';renderMistakes();}
 }
 void init();
