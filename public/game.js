@@ -107,6 +107,22 @@ function updateZoom(){
  scale=Math.max(1,Math.min(5,scale));const rect=$('map-viewport').getBoundingClientRect();const mx=rect.width*(scale-1)/2,my=rect.height*(scale-1)/2;panX=Math.max(-mx,Math.min(mx,panX));panY=Math.max(-my,Math.min(my,panY));$('map-mount').style.transform=`translate(${panX}px,${panY}px) scale(${scale})`;$('map-viewport').style.touchAction=scale>1?'none':'pan-y';$('zoom-out').disabled=scale===1;$('zoom-in').disabled=scale===5;
 }
 function resetZoom(){scale=1;panX=0;panY=0;updateZoom();}
+// Resolve the actual point inside each province, rather than the browser's
+// enlarged touch target. Screen CTMs include SVG scaling, padding, zoom and pan.
+function provinceAtPoint(clientX,clientY){
+ const view=$('map-viewport'),rect=view.getBoundingClientRect();
+ if(clientX<rect.left||clientX>rect.right||clientY<rect.top||clientY>rect.bottom)return null;
+ const svg=$('map-mount').querySelector('svg');if(!svg)return null;
+ const point=svg.createSVGPoint();point.x=clientX;point.y=clientY;
+ for(let i=groups.length-1;i>=0;i--){
+  const g=groups[i];for(const path of g.querySelectorAll('path')){
+   if(typeof path.isPointInFill!=='function')continue;
+   const matrix=path.getScreenCTM();if(!matrix)continue;
+   try{if(path.isPointInFill(point.matrixTransform(matrix.inverse())))return g.dataset.plakakodu;}catch{}
+  }
+ }
+ return null;
+}
 function createPlates(svg){
  const seen=new Set();for(const g of groups){const code=g.dataset.plakakodu;if(seen.has(code))continue;seen.add(code);
  const paths=groups.filter(x=>x.dataset.plakakodu===code).flatMap(x=>[...x.querySelectorAll('path')]);
@@ -134,14 +150,14 @@ async function init(){
   svg.setAttribute('viewBox','0 0 1007.478 430');svg.removeAttribute('id');svg.setAttribute('aria-label','Türkiye illeri ve plaka numaraları');$('map-mount').append(svg);groups=[...svg.querySelectorAll('g[data-plakakodu]')];
   const unique=new Map();groups.forEach(g=>unique.set(g.dataset.plakakodu,{code:g.dataset.plakakodu,name:g.dataset.iladi,region:regions[g.dataset.plakakodu]}));cities=[...unique.values()].sort((a,b)=>a.code.localeCompare(b.code));if(cities.length!==81||cities.some(c=>!c.region))throw new Error('Incomplete map');
   groups.forEach(g=>{g.setAttribute('role','button');g.setAttribute('tabindex','0');g.setAttribute('aria-label',`${g.dataset.iladi}, plaka ${g.dataset.plakakodu}`);g.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();selectProvince(g.dataset.plakakodu);}});});createPlates(svg);
-  document.querySelectorAll('[data-mode]').forEach(b=>b.addEventListener('click',()=>{sound('tap');setMode(b.dataset.mode);}));$('start').addEventListener('click',()=>startSession());$('hint').addEventListener('click',()=>{showHint();if(landscapeOnly.matches){$('hint-text').textContent=`${current()?.name||''} · ${$('hint-text').textContent}`;document.querySelector('.hint-bar').classList.add('show-landscape-hint');}});$('review-all').addEventListener('click',()=>{startSession('review');$('target').scrollIntoView({behavior:'smooth',block:'center'});});
+  document.querySelectorAll('[data-mode]').forEach(b=>b.addEventListener('click',()=>{sound('tap');setMode(b.dataset.mode);}));$('start').addEventListener('click',()=>startSession());$('hint').addEventListener('click',()=>{showHint();if(landscapeOnly.matches){$('hint-text').textContent=`${current()?.name||''} · ${$('hint-text').textContent}`;document.querySelector('.hint-bar').classList.toggle('show-landscape-hint',hintStep===1);}});$('review-all').addEventListener('click',()=>{startSession('review');$('target').scrollIntoView({behavior:'smooth',block:'center'});});
   $('sound').addEventListener('click',()=>{soundOn=!soundOn;$('sound').textContent=soundOn?'Ses açık':'Ses kapalı';$('sound').setAttribute('aria-pressed',String(soundOn));if(soundOn)sound('tap');});
   $('zoom-in').addEventListener('click',()=>{scale+=.75;updateZoom();});$('zoom-out').addEventListener('click',()=>{scale-=.75;updateZoom();});$('zoom-reset').addEventListener('click',resetZoom);
   // Refit after rotation or browser chrome changes without restarting the round.
   if(typeof ResizeObserver==='function')new ResizeObserver(()=>{pointers.clear();gesture=null;resetZoom();}).observe($('map-viewport'));
-  const view=$('map-viewport');view.addEventListener('pointerdown',e=>{pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(pointers.size===1){gesture={x:e.clientX,y:e.clientY,px:panX,py:panY,code:e.target.closest?.('[data-plakakodu]')?.dataset.plakakodu,moved:false};if(scale>1)view.setPointerCapture(e.pointerId);}else if(pointers.size===2){const p=[...pointers.values()];gesture.moved=true;gesture.distance=Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y);gesture.scale=scale;}});
+  const view=$('map-viewport');view.addEventListener('pointerdown',e=>{pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(pointers.size===1){gesture={x:e.clientX,y:e.clientY,px:panX,py:panY,code:provinceAtPoint(e.clientX,e.clientY),moved:false};view.setPointerCapture(e.pointerId);}else if(pointers.size===2){const p=[...pointers.values()];gesture.moved=true;gesture.distance=Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y);gesture.scale=scale;}});
   view.addEventListener('pointermove',e=>{if(!pointers.has(e.pointerId)||!gesture)return;pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(pointers.size===2&&gesture.distance){const p=[...pointers.values()];scale=gesture.scale*Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y)/gesture.distance;updateZoom();return;}const dx=e.clientX-gesture.x,dy=e.clientY-gesture.y;if(Math.hypot(dx,dy)>9)gesture.moved=true;if(scale>1){panX=gesture.px+dx;panY=gesture.py+dy;updateZoom();}});
-  const finish=e=>{pointers.delete(e.pointerId);if(!pointers.size){if(e.type==='pointerup'&&gesture&&!gesture.moved&&gesture.code)selectProvince(gesture.code);gesture=null;}else if(gesture)gesture.moved=true;};view.addEventListener('pointerup',finish);view.addEventListener('pointercancel',finish);
+  const finish=e=>{pointers.delete(e.pointerId);if(!pointers.size){if(e.type==='pointerup'&&gesture&&!gesture.moved&&gesture.code&&provinceAtPoint(e.clientX,e.clientY)===gesture.code)selectProvince(gesture.code);gesture=null;}else if(gesture)gesture.moved=true;};view.addEventListener('pointerup',finish);view.addEventListener('pointercancel',finish);
   setMode('quiz');renderMistakes();registerTools();
   const enterLandscape=()=>{if(landscapeOnly.matches&&!active&&!solved&&mode==='quiz'&&queue.length&&answered===0)startSession();};
   landscapeOnly.addEventListener('change',()=>{if(!document.body.classList.contains('app-ui'))enterLandscape();});
