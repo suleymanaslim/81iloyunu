@@ -14,6 +14,7 @@ const regions = Object.fromEntries(Object.entries(REGION_CODES).flatMap(([r,cs])
 let cities = [], groups = [], mistakes = {}, storageOK = true;
 let mode = 'quiz', queue = [], index = 0, active = false, solved = false, errors = 0, hintStep = 0, correctFirst = 0, answered = 0;
 let soundOn = true, audioContext, scale = 1, panX = 0, panY = 0;
+const landscapeOnly=window.matchMedia('(orientation:landscape) and (max-height:600px) and (pointer:coarse), (orientation:landscape) and (max-height:500px) and (max-width:1100px)');
 const pointers = new Map(); let gesture = null;
 const rejected = new Set(); const known = new Set(); let advanceTimer = null;
 function cancelAdvance(){clearTimeout(advanceTimer);advanceTimer=null;}
@@ -75,6 +76,7 @@ function startSession(newMode=mode,codes){
  if(!queue.length)return;active=true;$('start').hidden=true;sound('tap');showQuestion();feedback('Haritada doğru ile dokun.');
 }
 function showQuestion(){
+ document.querySelector('.hint-bar').classList.remove('show-landscape-hint');
  cancelAdvance();const c=current();if(!c)return;errors=0;hintStep=0;solved=false;clearMap();resetZoom();
  $('prompt').textContent=mode==='review'?'BİR DAHA BULALIM':'HARİTADA NEREDE?';$('target').textContent=c.name;$('instruction').textContent='İlin bulunduğu yere dokun.';
  $('progress').textContent=`${index+1} / ${queue.length}`;$('accuracy').textContent=`İlk denemede: ${correctFirst} doğru`;
@@ -131,7 +133,7 @@ async function init(){
   svg.setAttribute('viewBox','0 0 1007.478 430');svg.removeAttribute('id');svg.setAttribute('aria-label','Türkiye illeri ve plaka numaraları');$('map-mount').append(svg);groups=[...svg.querySelectorAll('g[data-plakakodu]')];
   const unique=new Map();groups.forEach(g=>unique.set(g.dataset.plakakodu,{code:g.dataset.plakakodu,name:g.dataset.iladi,region:regions[g.dataset.plakakodu]}));cities=[...unique.values()].sort((a,b)=>a.code.localeCompare(b.code));if(cities.length!==81||cities.some(c=>!c.region))throw new Error('Incomplete map');
   groups.forEach(g=>{g.setAttribute('role','button');g.setAttribute('tabindex','0');g.setAttribute('aria-label',`${g.dataset.iladi}, plaka ${g.dataset.plakakodu}`);g.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();selectProvince(g.dataset.plakakodu);}});});createPlates(svg);
-  document.querySelectorAll('[data-mode]').forEach(b=>b.addEventListener('click',()=>{sound('tap');setMode(b.dataset.mode);}));$('start').addEventListener('click',()=>startSession());$('hint').addEventListener('click',showHint);$('review-all').addEventListener('click',()=>{startSession('review');$('target').scrollIntoView({behavior:'smooth',block:'center'});});
+  document.querySelectorAll('[data-mode]').forEach(b=>b.addEventListener('click',()=>{sound('tap');setMode(b.dataset.mode);}));$('start').addEventListener('click',()=>startSession());$('hint').addEventListener('click',()=>{showHint();if(landscapeOnly.matches){$('hint-text').textContent=`${current()?.name||''} · ${$('hint-text').textContent}`;document.querySelector('.hint-bar').classList.add('show-landscape-hint');}});$('review-all').addEventListener('click',()=>{startSession('review');$('target').scrollIntoView({behavior:'smooth',block:'center'});});
   $('sound').addEventListener('click',()=>{soundOn=!soundOn;$('sound').textContent=soundOn?'Ses açık':'Ses kapalı';$('sound').setAttribute('aria-pressed',String(soundOn));if(soundOn)sound('tap');});
   $('zoom-in').addEventListener('click',()=>{scale+=.75;updateZoom();});$('zoom-out').addEventListener('click',()=>{scale-=.75;updateZoom();});$('zoom-reset').addEventListener('click',resetZoom);
   // Refit after rotation or browser chrome changes without restarting the round.
@@ -140,6 +142,8 @@ async function init(){
   view.addEventListener('pointermove',e=>{if(!pointers.has(e.pointerId)||!gesture)return;pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(pointers.size===2&&gesture.distance){const p=[...pointers.values()];scale=gesture.scale*Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y)/gesture.distance;updateZoom();return;}const dx=e.clientX-gesture.x,dy=e.clientY-gesture.y;if(Math.hypot(dx,dy)>9)gesture.moved=true;if(scale>1){panX=gesture.px+dx;panY=gesture.py+dy;updateZoom();}});
   const finish=e=>{pointers.delete(e.pointerId);if(!pointers.size){if(e.type==='pointerup'&&gesture&&!gesture.moved&&gesture.code)selectProvince(gesture.code);gesture=null;}else if(gesture)gesture.moved=true;};view.addEventListener('pointerup',finish);view.addEventListener('pointercancel',finish);
   setMode('quiz');renderMistakes();registerTools();
+  const enterLandscape=()=>{if(landscapeOnly.matches&&!active&&!solved&&mode==='quiz'&&queue.length&&answered===0)startSession();};
+  landscapeOnly.addEventListener('change',enterLandscape);enterLandscape();
  }catch{feedback('Harita yüklenemedi. Bağlantını kontrol edip sayfayı yenile.','error');$('target').textContent='Harita açılamadı';$('instruction').textContent='Sayfayı yenileyerek tekrar dene.';renderMistakes();}
 }
 void init();
