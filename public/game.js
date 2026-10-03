@@ -15,6 +15,9 @@ let cities = [], groups = [], mistakes = {}, storageOK = true;
 let mode = 'quiz', queue = [], index = 0, active = false, solved = false, errors = 0, hintStep = 0, correctFirst = 0, answered = 0;
 let soundOn = true, audioContext, scale = 1, panX = 0, panY = 0;
 const pointers = new Map(); let gesture = null;
+const rejected = new Set(); let advanceTimer = null;
+function cancelAdvance(){clearTimeout(advanceTimer);advanceTimer=null;}
+function scheduleAdvance(delay=700){cancelAdvance();advanceTimer=setTimeout(()=>{advanceTimer=null;nextQuestion();},delay);}
 function loadMistakes(){
  try {
   const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
@@ -41,8 +44,8 @@ function sound(kind){
  }catch{}
 }
 function feedback(text,kind=''){ $('feedback').textContent=text;$('feedback').className='feedback'+(kind?' '+kind:''); }
-function clearMap(){groups.forEach(g=>g.classList.remove('correct','wrong','dim','revealed'));}
-function paint(code,kind){groups.filter(g=>g.dataset.plakakodu===code).forEach(g=>g.classList.add(kind));}
+function clearMap(){rejected.clear();groups.forEach(g=>{g.classList.remove('correct','wrong','dim','revealed');g.setAttribute('aria-disabled','false');g.setAttribute('tabindex','0');});}
+function paint(code,kind){groups.filter(g=>g.dataset.plakakodu===code).forEach(g=>{g.classList.add(kind);if(kind==='wrong'){g.setAttribute('aria-disabled','true');g.setAttribute('tabindex','-1');}});}
 function recordError(){const c=current();if(!c)return;const v=mistakes[c.code]||{count:0,pending:true,reviewed:0};v.count++;v.pending=true;mistakes[c.code]=v;saveMistakes();}
 function renderMistakes(){
  const pending=pendingCodes();$('pending-count').textContent=pending.length;$('review-badge').textContent=pending.length;$('review-all').disabled=!pending.length;
@@ -57,9 +60,9 @@ function renderMistakes(){
  $('storage-note').textContent=storageOK?'Bu liste bu cihazın tarayıcısında saklanır. Tarayıcı verileri silinirse liste de silinir.':'Tarayıcı kaydına erişilemiyor. Hatalar şu an yalnızca bu açık sayfada tutuluyor.';
 }
 function setMode(newMode){
- mode=newMode;active=false;solved=false;clearMap();resetZoom();
+ cancelAdvance();mode=newMode;active=false;solved=false;clearMap();resetZoom();
  document.querySelectorAll('[data-mode]').forEach(b=>{const on=b.dataset.mode===mode;b.classList.toggle('active',on);b.setAttribute('aria-pressed',String(on));});
- $('next').hidden=true;$('start').hidden=false;$('hint').disabled=true;
+ $('start').hidden=false;$('hint').disabled=true;
  if(mode==='learn'){
   $('prompt').textContent='SERBEST KEŞİF';$('target').textContent='Bir ile dokun';$('instruction').textContent='Adını, plakasını ve bölgesini öğren.';$('progress').textContent='81 il';$('accuracy').textContent='Türkiye haritası';$('start').hidden=true;$('hint-text').textContent='Küçük iller için + düğmesiyle yakınlaştır.';$('hint').textContent='İpucu al';feedback('Haritadan istediğin ili seç.');$('session-label').textContent='İstediğin sırayla keşfet.';return;
  }
@@ -72,31 +75,31 @@ function startSession(newMode=mode,codes){
  if(!queue.length)return;active=true;$('start').hidden=true;sound('tap');showQuestion();feedback('Haritada doğru ile dokun.');
 }
 function showQuestion(){
- const c=current();if(!c)return;errors=0;hintStep=0;solved=false;clearMap();resetZoom();
+ cancelAdvance();const c=current();if(!c)return;errors=0;hintStep=0;solved=false;clearMap();resetZoom();
  $('prompt').textContent=mode==='review'?'BİR DAHA BULALIM':'HARİTADA NEREDE?';$('target').textContent=c.name;$('instruction').textContent='İlin bulunduğu yere dokun.';
  $('progress').textContent=`${index+1} / ${queue.length}`;$('accuracy').textContent=`İlk denemede: ${correctFirst} doğru`;
- $('hint-text').textContent='Önce bölgesini öğren, sonra haritada daralt.';$('hint').textContent='İpucu al';$('hint').disabled=!active;$('next').hidden=true;
+ $('hint-text').textContent='Önce bölgesini öğren, sonra haritada daralt.';$('hint').textContent='İpucu al';$('hint').disabled=!active;
  $('session-label').textContent=mode==='review'?'İpucusuz ve hatasız bulduğunda tekrar tamamlanır.':'Acele etme. İlleri yerleriyle öğren.';
 }
 function selectProvince(code){
  const chosen=cities.find(c=>c.code===code);if(!chosen)return;
  if(mode==='learn'){clearMap();paint(code,'correct');$('target').textContent=chosen.name;$('instruction').textContent=`${code} plaka · ${chosen.region} Bölgesi`;feedback('Başka bir ile dokunarak devam edebilirsin.');sound('tap');return;}
- if(!active||solved)return;const target=current();groups.forEach(g=>g.classList.remove('wrong'));
- if(code!==target.code){errors++;recordError();paint(code,'wrong');feedback(`Burası ${chosen.name} (${code}). ${target.name} için yeniden dene.`,'error');sound('wrong');return;}
- solved=true;answered++;if(!errors&&!hintStep)correctFirst++;paint(code,'correct');$('hint').disabled=true;$('next').hidden=false;$('next').textContent=index===queue.length-1?'Turu bitir':'Sonraki il';
+ if(!active||solved||rejected.has(code))return;const target=current();
+ if(code!==target.code){rejected.add(code);errors++;recordError();paint(code,'wrong');feedback(`Burası ${chosen.name} (${code}). ${target.name} için başka bir il seç.`,'error');sound('wrong');return;}
+ solved=true;answered++;if(!errors&&!hintStep)correctFirst++;paint(code,'correct');$('hint').disabled=true;
  let tail='';if(mode==='review'&&!errors&&!hintStep&&mistakes[code]){mistakes[code].pending=false;mistakes[code].reviewed++;saveMistakes();tail=' Tekrar tamamlandı.';}else if(mode==='review'){tail=' İpucusuz, hatasız bulmak için tekrar listesinde kalıyor.';}
- feedback(`Doğru! ${target.name} · ${code} plaka.${tail}`,'success');$('accuracy').textContent=`İlk denemede: ${correctFirst} doğru`;sound('correct');
+ feedback(`Doğru! ${target.name} · ${code} plaka.${tail}`,'success');$('accuracy').textContent=`İlk denemede: ${correctFirst} doğru`;sound('correct');scheduleAdvance();
 }
 function showHint(){
  if(!active||solved)return;const c=current();hintStep++;sound('tap');
  if(hintStep===1){$('hint-text').textContent=`${c.region} Bölgesi’nde. Bu bölgeyi düşün.`;$('hint').textContent='Bölgeyi göster';}
  else if(hintStep===2){groups.forEach(g=>g.classList.toggle('dim',regions[g.dataset.plakakodu]!==c.region));$('hint-text').textContent='Bölgedeki iller belirgin kaldı. Şimdi aramayı daralt.';$('hint').textContent='Cevabı göster';}
- else{recordError();errors++;clearMap();paint(c.code,'revealed');solved=true;answered++;$('hint').disabled=true;$('hint-text').textContent=`${c.name}, sarı renkle gösterilen il. Plakası ${c.code}.`;feedback('Bu il tekrar listene eklendi. Yerini inceleyip devam et.');$('next').hidden=false;$('next').textContent=index===queue.length-1?'Turu bitir':'Sonraki il';}
+ else{recordError();errors++;groups.forEach(g=>g.classList.remove('dim'));paint(c.code,'revealed');solved=true;answered++;$('hint').disabled=true;$('hint-text').textContent=`${c.name}, sarı renkle gösterilen il. Plakası ${c.code}.`;feedback('Bu il tekrar listene eklendi. Yerini incele; birazdan sonraki soru gelecek.');scheduleAdvance(2400);}
 }
 function nextQuestion(){
- if(!solved)return;sound('tap');index++;
+ if(!active||!solved)return;cancelAdvance();index++;
  if(index<queue.length){showQuestion();feedback('Haritada doğru ile dokun.');return;}
- active=false;clearMap();$('prompt').textContent='TUR TAMAMLANDI';$('target').textContent='Eline sağlık!';$('instruction').textContent=`${answered} il çalıştın. ${correctFirst} ilde ilk denemede, ipucusuz doğru cevap verdin.`;$('progress').textContent=`${queue.length} / ${queue.length}`;$('next').hidden=true;$('hint').disabled=true;$('start').hidden=false;$('start').disabled=false;$('start').textContent='Yeni tur';feedback(pendingCodes().length?`${pendingCodes().length} il tekrar bekliyor. Hatalarımı tekrar et bölümünden devam edebilirsin.`:'Tekrar bekleyen il kalmadı. Yeni bir tur oynayabilirsin.','success');$('session-label').textContent='';
+ active=false;clearMap();$('prompt').textContent='TUR TAMAMLANDI';$('target').textContent='Eline sağlık!';$('instruction').textContent=`${answered} il çalıştın. ${correctFirst} ilde ilk denemede, ipucusuz doğru cevap verdin.`;$('progress').textContent=`${queue.length} / ${queue.length}`;$('hint').disabled=true;$('start').hidden=false;$('start').disabled=false;$('start').textContent='Yeni tur';feedback(pendingCodes().length?`${pendingCodes().length} il tekrar bekliyor. Hatalarımı tekrar et bölümünden devam edebilirsin.`:'Tekrar bekleyen il kalmadı. Yeni bir tur oynayabilirsin.','success');$('session-label').textContent='';
 }
 function updateZoom(){
  scale=Math.max(1,Math.min(5,scale));const rect=$('map-viewport').getBoundingClientRect();const mx=rect.width*(scale-1)/2,my=rect.height*(scale-1)/2;panX=Math.max(-mx,Math.min(mx,panX));panY=Math.max(-my,Math.min(my,panY));$('map-mount').style.transform=`translate(${panX}px,${panY}px) scale(${scale})`;$('map-viewport').style.touchAction=scale>1?'none':'pan-y';$('zoom-out').disabled=scale===1;$('zoom-in').disabled=scale===5;
@@ -118,7 +121,7 @@ function registerTools(){
  const read=()=>({mode,active,question:current()?.name||null,progress:{answered,total:queue.length},mistakes:Object.entries(mistakes).map(([code,v])=>({code,name:cities.find(c=>c.code===code)?.name,...v}))});
  const tools=[{name:'read_learning_state',description:'Read the current question and device-local mistake list.',inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:true},execute:()=>read()},
  {name:'start_mistake_review',description:'Start a new review session of provinces pending review on this device.',inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:false},execute:()=>{if(!pendingCodes().length)throw new Error('No provinces pending review');startSession('review');return read();}},
- {name:'answer_province',description:'Answer the current active question using a province plate code. Wrong answers are saved to the device mistake list.',inputSchema:{type:'object',properties:{code:{type:'string',pattern:'^(0[1-9]|[1-7][0-9]|8[01])$'}},required:['code'],additionalProperties:false},annotations:{readOnlyHint:false},execute:input=>{if(!input||!cities.some(c=>c.code===input.code))throw new Error('Invalid province code');if(!active||solved||mode==='learn')throw new Error('No active unanswered question');selectProvince(input.code);return {...read(),feedback:$('feedback').textContent};}}];
+ {name:'answer_province',description:'Answer the current active question using a province plate code. Wrong selections are disabled for this question; correct answers advance automatically.',inputSchema:{type:'object',properties:{code:{type:'string',pattern:'^(0[1-9]|[1-7][0-9]|8[01])$'}},required:['code'],additionalProperties:false},annotations:{readOnlyHint:false},execute:input=>{if(!input||!cities.some(c=>c.code===input.code))throw new Error('Invalid province code');if(!active||solved||mode==='learn')throw new Error('No active unanswered question');if(rejected.has(input.code))throw new Error('Province disabled for this question');selectProvince(input.code);return {...read(),feedback:$('feedback').textContent};}}];
  for(const tool of tools)try{void Promise.resolve(document.modelContext.registerTool(tool)).catch(()=>{});}catch{}
 }
 async function init(){
@@ -128,7 +131,7 @@ async function init(){
   svg.setAttribute('viewBox','0 0 1007.478 430');svg.removeAttribute('id');svg.setAttribute('aria-label','Türkiye illeri ve plaka numaraları');$('map-mount').append(svg);groups=[...svg.querySelectorAll('g[data-plakakodu]')];
   const unique=new Map();groups.forEach(g=>unique.set(g.dataset.plakakodu,{code:g.dataset.plakakodu,name:g.dataset.iladi,region:regions[g.dataset.plakakodu]}));cities=[...unique.values()].sort((a,b)=>a.code.localeCompare(b.code));if(cities.length!==81||cities.some(c=>!c.region))throw new Error('Incomplete map');
   groups.forEach(g=>{g.setAttribute('role','button');g.setAttribute('tabindex','0');g.setAttribute('aria-label',`${g.dataset.iladi}, plaka ${g.dataset.plakakodu}`);g.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();selectProvince(g.dataset.plakakodu);}});});createPlates(svg);
-  document.querySelectorAll('[data-mode]').forEach(b=>b.addEventListener('click',()=>{sound('tap');setMode(b.dataset.mode);}));$('start').addEventListener('click',()=>startSession());$('next').addEventListener('click',nextQuestion);$('hint').addEventListener('click',showHint);$('review-all').addEventListener('click',()=>{startSession('review');$('target').scrollIntoView({behavior:'smooth',block:'center'});});
+  document.querySelectorAll('[data-mode]').forEach(b=>b.addEventListener('click',()=>{sound('tap');setMode(b.dataset.mode);}));$('start').addEventListener('click',()=>startSession());$('hint').addEventListener('click',showHint);$('review-all').addEventListener('click',()=>{startSession('review');$('target').scrollIntoView({behavior:'smooth',block:'center'});});
   $('sound').addEventListener('click',()=>{soundOn=!soundOn;$('sound').textContent=soundOn?'Ses açık':'Ses kapalı';$('sound').setAttribute('aria-pressed',String(soundOn));if(soundOn)sound('tap');});
   $('zoom-in').addEventListener('click',()=>{scale+=.75;updateZoom();});$('zoom-out').addEventListener('click',()=>{scale-=.75;updateZoom();});$('zoom-reset').addEventListener('click',resetZoom);
   const view=$('map-viewport');view.addEventListener('pointerdown',e=>{pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(pointers.size===1){gesture={x:e.clientX,y:e.clientY,px:panX,py:panY,code:e.target.closest?.('[data-plakakodu]')?.dataset.plakakodu,moved:false};if(scale>1)view.setPointerCapture(e.pointerId);}else if(pointers.size===2){const p=[...pointers.values()];gesture.moved=true;gesture.distance=Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y);gesture.scale=scale;}});
